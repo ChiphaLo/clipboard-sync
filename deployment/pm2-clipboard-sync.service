@@ -1,0 +1,39 @@
+[Unit]
+Description=Clipboard Sync PM2 process manager
+Documentation=https://pm2.keymetrics.io/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User=clipboard-sync
+Group=clipboard-sync
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=PM2_HOME=/var/lib/clipboard-sync/.pm2
+Environment=HOME=/var/lib/clipboard-sync
+WorkingDirectory=/var/lib/clipboard-sync
+PIDFile=/var/lib/clipboard-sync/.pm2/pm2.pid
+LimitNOFILE=4096
+LimitNPROC=256
+LimitCORE=0
+TasksMax=256
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+ReadWritePaths=/var/lib/clipboard-sync
+ExecStart=/usr/bin/pm2 resurrect
+ExecReload=/usr/bin/pm2 reload all
+ExecStop=/usr/bin/pm2 kill
+
+[Install]
+WantedBy=multi-user.target

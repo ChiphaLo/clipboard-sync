@@ -1,0 +1,11 @@
+{
+	email admin@example.com
+}
+
+clip.example.com {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		Permissions-Policy "camera=(), geolocation=(), microphone=()"
+	}
+	reverse_proxy 127.0.0.1:35281
+}

@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f5f5f7">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <title>Clip · 剪贴板同步</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f5f7;
+      --paper: rgba(255, 255, 255, .82);
+      --paper-solid: #ffffff;
+      --ink: #1d1d1f;
+      --muted: #86868b;
+      --subtle: #6e6e73;
+      --line: rgba(29, 29, 31, .10);
+      --line-strong: rgba(29, 29, 31, .16);
+      --blue: #0071e3;
+      --blue-dark: #0066cc;
+      --blue-soft: rgba(0, 113, 227, .10);
+      --green: #1f8a55;
+      --red: #d93838;
+      --shadow: 0 20px 60px rgba(31, 35, 45, .08), 0 2px 10px rgba(31, 35, 45, .04);
+      --shadow-small: 0 8px 24px rgba(31, 35, 45, .07), 0 1px 4px rgba(31, 35, 45, .04);
+      --radius-xl: 28px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      --content-max: 1180px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(900px 540px at 0% -10%, rgba(185, 218, 255, .48), transparent 65%),
+        radial-gradient(760px 520px at 100% 0%, rgba(226, 213, 255, .44), transparent 64%),
+        var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+      letter-spacing: -.01em;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .23;
+      background-image: linear-gradient(rgba(255,255,255,.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.4) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: linear-gradient(to bottom, black, transparent 70%);
+    }
+
+    body.drag-over::before {
+      z-index: 20;
+      opacity: 1;
+      background: rgba(0, 113, 227, .12);
+      border: 2px dashed var(--blue);
+      mask-image: none;
+    }
+
+    body.drag-over::after {
+      content: '松开即可上传';
+      position: fixed;
+      z-index: 21;
+      top: 50%;
+      left: 50%;
+      padding: 14px 22px;
+      color: #fff;
+      background: rgba(0, 84, 168, .94);
+      border-radius: 999px;
+      box-shadow: 0 12px 36px rgba(0, 87, 175, .28);
+      font-size: 16px;
+      font-weight: 700;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button, input, textarea { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid rgba(0, 113, 227, .26); outline-offset: 2px; }
+    input, textarea {
+      width: 100%;
+      color: var(--ink);
+      background: rgba(255, 255, 255, .72);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      outline: none;
+      transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+    }
+    input { min-height: 48px; padding: 12px 14px; }
+    textarea { min-height: 170px; padding: 15px 16px; resize: vertical; }
+    input::placeholder, textarea::placeholder { color: #a1a1a6; }
+    input:focus, textarea:focus { border-color: rgba(0, 113, 227, .55); background: #fff; box-shadow: 0 0 0 4px rgba(0, 113, 227, .10); }
+
+    .page-shell { width: min(100%, var(--content-max)); min-height: 100vh; margin: 0 auto; padding: 28px 28px 44px; position: relative; z-index: 1; }
+    .login-form, .app-view { display: none; }
+    .login-form.active, .app-view.active { display: block; }
+
+    .login-layout { min-height: calc(100vh - 72px); display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(360px, .92fr); align-items: center; gap: clamp(40px, 8vw, 112px); }
+    .login-intro { padding: 24px 0 32px; }
+    .eyebrow, .section-kicker { display: inline-flex; align-items: center; gap: 8px; color: var(--subtle); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .eyebrow::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 0 5px rgba(0,113,227,.12); }
+    .login-intro h1 { max-width: 640px; margin: 22px 0 20px; font-size: clamp(44px, 6vw, 80px); line-height: .98; letter-spacing: -.065em; font-weight: 700; }
+    .login-intro h1 span { display: block; color: transparent; background: linear-gradient(105deg, #0071e3 5%, #7b61ff 78%); -webkit-background-clip: text; background-clip: text; }
+    .intro-copy { max-width: 470px; margin: 0; color: var(--subtle); font-size: 18px; line-height: 1.55; letter-spacing: -.02em; }
+    .intro-points { display: flex; flex-wrap: wrap; gap: 10px; margin: 34px 0 0; padding: 0; list-style: none; }
+    .intro-points li { display: inline-flex; align-items: center; gap: 7px; color: var(--subtle); font-size: 13px; }
+    .intro-points li::before { content: '✓'; display: grid; place-items: center; width: 18px; height: 18px; color: var(--blue); background: rgba(0,113,227,.10); border-radius: 50%; font-size: 11px; font-weight: 800; }
+    .login-visual { position: relative; height: 180px; margin-top: 42px; max-width: 500px; overflow: hidden; border: 1px solid rgba(255,255,255,.8); border-radius: var(--radius-xl); background: linear-gradient(120deg, rgba(255,255,255,.70), rgba(232,240,255,.46)); box-shadow: var(--shadow-small); }
+    .login-visual::before, .login-visual::after { content: ''; position: absolute; border-radius: 50%; filter: blur(1px); }
+    .login-visual::before { width: 220px; height: 220px; left: 18%; top: 38px; background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.9), rgba(129,183,255,.38) 42%, rgba(104,114,255,.04) 70%); }
+    .login-visual::after { width: 170px; height: 170px; right: -18px; top: -70px; background: radial-gradient(circle, rgba(185,161,255,.45), rgba(185,161,255,0) 70%); }
+    .orbit { position: absolute; inset: 30px 54px; border: 1px solid rgba(0,113,227,.14); border-radius: 50%; transform: rotate(-15deg); }
+    .orbit::after { content: ''; position: absolute; width: 9px; height: 9px; right: 12%; bottom: 9%; border-radius: 50%; background: var(--blue); box-shadow: 0 0 0 8px rgba(0,113,227,.10); }
+    .visual-note { position: absolute; right: 24px; bottom: 20px; color: rgba(29,29,31,.58); font-size: 12px; font-weight: 600; }
+
+    .panel { border: 1px solid rgba(255,255,255,.8); background: var(--paper); box-shadow: var(--shadow); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }
+    .auth-card { width: 100%; max-width: 440px; margin: 0 auto; padding: clamp(28px, 5vw, 42px); border-radius: var(--radius-xl); }
+    .brand-mark { display: inline-grid; place-items: center; width: 42px; height: 42px; margin-bottom: 27px; color: #fff; background: var(--ink); border-radius: 13px; box-shadow: 0 7px 18px rgba(29,29,31,.18); }
+    .brand-mark svg { width: 22px; height: 22px; }
+    .auth-title { margin: 0; font-size: 30px; line-height: 1.08; letter-spacing: -.045em; }
+    .auth-subtitle { margin: 10px 0 30px; color: var(--muted); font-size: 15px; }
+    .form-group { margin-bottom: 18px; }
+    .form-group label, .field-label { display: block; margin-bottom: 8px; color: var(--subtle); font-size: 13px; font-weight: 700; }
+    .form-group button { width: 100%; }
+    .error { min-height: 21px; margin: 0 0 12px; color: var(--red); font-size: 13px; }
+    .radio-group { display: grid; gap: 10px; margin: 22px 0 25px; }
+    .radio-option { position: relative; display: flex; align-items: flex-start; gap: 12px; margin: 0; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: rgba(255,255,255,.42); cursor: pointer; transition: border-color .18s ease, background .18s ease, transform .18s ease, box-shadow .18s ease; }
+    .radio-option:hover { border-color: rgba(0,113,227,.30); transform: translateY(-1px); }
+    .radio-option:has(input:checked) { border-color: rgba(0,113,227,.50); background: var(--blue-soft); box-shadow: inset 0 0 0 1px rgba(0,113,227,.08); }
+    .radio-option input[type="radio"] { flex: 0 0 auto; width: 18px; min-height: 18px; margin: 1px 0 0; accent-color: var(--blue); }
+    .radio-label { flex: 1; min-width: 0; }
+    .radio-label-title { color: var(--ink); font-size: 14px; font-weight: 700; }
+    .radio-label-desc { margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; padding: 10px 16px; border: 0; border-radius: 999px; font-size: 14px; font-weight: 700; transition: transform .18s ease, box-shadow .18s ease, background .18s ease, color .18s ease, opacity .18s ease; }
+    .btn:active, .item-btn:active { transform: scale(.97); }
+    .btn:disabled { cursor: wait; opacity: .62; }
+    .btn-primary { color: #fff; background: var(--blue); box-shadow: 0 8px 18px rgba(0,113,227,.24); }
+    .btn-primary:hover { background: var(--blue-dark); box-shadow: 0 10px 24px rgba(0,113,227,.30); transform: translateY(-1px); }
+    .btn-ghost { color: var(--subtle); background: rgba(255,255,255,.58); border: 1px solid var(--line); }
+    .btn-ghost:hover { color: var(--ink); background: #fff; border-color: var(--line-strong); }
+
+    .app-view { padding-bottom: 16px; }
+    .app-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 8px 0 30px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-badge { display: grid; place-items: center; width: 44px; height: 44px; color: #fff; background: var(--ink); border-radius: 14px; box-shadow: 0 8px 18px rgba(29,29,31,.15); }
+    .brand-badge svg { width: 22px; height: 22px; }
+    .brand h1 { margin: 0; font-size: 18px; line-height: 1; letter-spacing: -.04em; }
+    .brand p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+    .hero-actions { display: flex; align-items: center; gap: 12px; }
+    .sync-status { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
+    .sync-status::before { content: ''; width: 7px; height: 7px; background: #32b76a; border-radius: 50%; box-shadow: 0 0 0 4px rgba(50,183,106,.12); }
+
+    .content-area { padding: clamp(20px, 4vw, 34px); border-radius: var(--radius-xl); }
+    .content-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
+    .content-heading h2 { margin: 5px 0 0; font-size: clamp(24px, 3vw, 34px); line-height: 1.05; letter-spacing: -.055em; }
+    .content-heading p { margin: 0; color: var(--muted); font-size: 13px; }
+    .tabs { display: inline-flex; align-items: center; gap: 4px; margin: 0 0 24px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: rgba(29,29,31,.045); }
+    .tab-btn { min-width: 94px; padding: 9px 17px; color: var(--muted); background: transparent; border: 0; border-radius: 999px; font-size: 13px; font-weight: 700; transition: color .18s ease, background .18s ease, box-shadow .18s ease; }
+    .tab-btn:hover { color: var(--ink); }
+    .tab-btn.active { color: var(--ink); background: #fff; box-shadow: 0 3px 9px rgba(29,29,31,.09); }
+
+    .workspace { display: grid; grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr); gap: 18px; align-items: start; }
+    .section { min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: rgba(255,255,255,.60); }
+    .section-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 17px; }
+    .section h3 { margin: 0; font-size: 15px; letter-spacing: -.02em; }
+    .section-heading p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .section-icon { display: grid; place-items: center; width: 34px; height: 34px; color: var(--blue); background: var(--blue-soft); border-radius: 11px; }
+    .section-icon svg { width: 17px; height: 17px; }
+    .composer textarea { display: block; margin-bottom: 12px; }
+    .composer-actions { display: flex; justify-content: flex-end; }
+    .upload-heading { display: flex; align-items: center; gap: 8px; margin: 28px 0 12px !important; padding-top: 22px; border-top: 1px solid var(--line); font-size: 14px !important; }
+    .upload-heading svg { color: var(--subtle); }
+    .drop-zone { display: flex; align-items: center; justify-content: center; min-height: 104px; padding: 18px; text-align: center; border: 1px dashed rgba(0,113,227,.28); border-radius: var(--radius-md); background: rgba(0,113,227,.035); cursor: pointer; transition: background .18s ease, border-color .18s ease, transform .18s ease; }
+    .drop-zone:hover { background: rgba(0,113,227,.07); border-color: rgba(0,113,227,.55); transform: translateY(-1px); }
+    .drop-zone-copy { color: var(--subtle); font-size: 13px; }
+    .drop-zone-copy strong { display: block; color: var(--ink); font-size: 13px; }
+    .drop-zone-copy span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .upload-controls { margin: 12px 0 0; }
+    .upload-controls .btn { width: 100%; }
+    .upload-panel { margin: 12px 0 0; padding: 13px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: rgba(255,255,255,.62); }
+    .upload-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+    .upload-panel-text { color: var(--subtle); font-size: 12px; font-weight: 700; }
+    .upload-cancel { padding: 4px 8px; border: 0; border-radius: 8px; background: none; color: var(--blue); font-size: 12px; font-weight: 700; }
+    .upload-cancel:hover { background: var(--blue-soft); }
+    .upload-rows { display: grid; gap: 9px; }
+    .upload-row { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: rgba(255,255,255,.86); }
+    .upload-row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .upload-row-name { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .upload-row-size { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .upload-bar { height: 6px; margin: 9px 0 7px; overflow: hidden; border-radius: 999px; background: rgba(29,29,31,.08); }
+    .upload-bar-fill { width: 0%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--blue), #4aa3ff); transition: width .18s ease; }
+    .upload-row-status { color: var(--muted); font-size: 12px; }
+    .upload-row-retry .upload-bar-fill { background: linear-gradient(90deg, #e08a1e, #ffc46b); }
+    .upload-row-retry .upload-row-status { color: #b9741a; }
+    .upload-row-resumed .upload-bar-fill { background: linear-gradient(90deg, #6a5cc9, #9b8cf0); }
+    .upload-row-resumed .upload-row-status { color: #5b4db4; }
+    .upload-row-done .upload-bar-fill { background: linear-gradient(90deg, var(--green), #4cc38a); }
+    .upload-row-done .upload-row-status { color: var(--green); }
+    .upload-row-error .upload-bar-fill { background: var(--red); }
+    .upload-row-error .upload-row-status { color: var(--red); }
+    .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .list-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 17px; }
+    .list-heading h3 { margin: 0; }
+    .list-count { color: var(--muted); font-size: 12px; }
+    [hidden] { display: none !important; }
+    .list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    .item { min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: var(--radius-md); background: rgba(255,255,255,.76); transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
+    .item:hover { border-color: rgba(0,113,227,.25); box-shadow: var(--shadow-small); transform: translateY(-1px); }
+    .item-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+    .item-content { min-width: 0; flex: 1; }
+    .item-time { flex: 0 0 auto; color: #a1a1a6; font-size: 11px; white-space: nowrap; }
+    .text-preview-text { display: -webkit-box; overflow: hidden; color: var(--ink); -webkit-box-orient: vertical; -webkit-line-clamp: 4; white-space: pre-wrap; word-break: break-word; }
+    .file-preview { display: block; width: 100%; max-height: 190px; margin-bottom: 11px; border-radius: 10px; object-fit: cover; background: #f1f1f3; }
+    .file-name { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-weight: 600; }
+    .file-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-size { flex: none; color: var(--muted); font-size: 12px; font-weight: 400; white-space: nowrap; }
+    .item-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; padding-top: 12px; border-top: 1px solid rgba(29,29,31,.07); }
+    .item-btn { padding: 6px 10px; color: var(--subtle); background: #f5f5f7; border: 1px solid transparent; border-radius: 999px; font-size: 12px; font-weight: 700; transition: all .18s ease; }
+    .item-btn:hover { color: var(--blue); background: var(--blue-soft); border-color: rgba(0,113,227,.12); }
+    .item-btn.btn-delete:hover { color: var(--red); background: rgba(217,56,56,.08); border-color: rgba(217,56,56,.12); }
+    .item-btn.btn-permanent:hover { color: var(--green); background: rgba(31,138,85,.08); border-color: rgba(31,138,85,.12); }
+    .empty { padding: 30px 16px; color: var(--muted); text-align: center; border: 1px dashed var(--line-strong); border-radius: var(--radius-md); background: rgba(255,255,255,.36); font-size: 13px; }
+    .action-ok { color: var(--green) !important; background: rgba(31,138,85,.10) !important; }
+    .action-error { color: var(--red) !important; background: rgba(217,56,56,.10) !important; }
+
+    @media (max-width: 860px) {
+      .login-layout { grid-template-columns: 1fr; min-height: auto; gap: 24px; padding: 7vh 0 4vh; }
+      .login-intro { padding: 0; text-align: center; }
+      .login-intro h1, .intro-copy { margin-left: auto; margin-right: auto; }
+      .intro-points { justify-content: center; }
+      .login-visual { display: none; }
+      .auth-card { margin: 0 auto; }
+      .workspace { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 560px) {
+      .page-shell { padding: 18px 16px 28px; }
+      .login-layout { padding-top: 5vh; }
+      .login-intro h1 { font-size: clamp(42px, 15vw, 64px); }
+      .intro-copy { font-size: 16px; }
+      .auth-card { padding: 26px 20px; border-radius: 22px; }
+      .app-header { align-items: flex-start; padding-bottom: 22px; }
+      .sync-status { display: none; }
+      .content-area { padding: 16px; border-radius: 22px; }
+      .content-heading { display: block; margin-bottom: 20px; }
+      .content-heading p { margin-top: 7px; }
+      .section { padding: 17px; border-radius: 17px; }
+      .item-top { display: block; }
+      .item-time { display: block; margin-top: 8px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-shell">
+    <form id="loginForm" class="login-form active">
+      <div class="login-layout">
+        <section class="login-intro" aria-labelledby="loginIntroTitle">
+          <div class="eyebrow">Private clipboard · 私密同步</div>
+          <h1 id="loginIntroTitle">把重要的内容，<span>带在身边。</span></h1>
+          <p class="intro-copy">在设备之间轻松传递文字与文件。简洁、快速，只为你保存的每一条内容服务。</p>
+          <ul class="intro-points" aria-label="服务特点">
+            <li>跨设备同步</li>
+            <li>临时或长期保存</li>
+            <li>安全传输</li>
+          </ul>
+          <div class="login-visual" aria-hidden="true">
+            <div class="orbit"></div>
+            <div class="visual-note">your things, within reach</div>
+          </div>
+        </section>
+
+        <div class="panel auth-card">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="5" y="4.5" width="14" height="16" rx="3"></rect>
+              <path d="M9 4.5V3.8A1.8 1.8 0 0 1 10.8 2h2.4A1.8 1.8 0 0 1 15 3.8v.7M9 10h6M9 14h6M9 18h3"></path>
+            </svg>
+          </div>
+          <h2 class="auth-title">欢迎回来</h2>
+          <p class="auth-subtitle">登录你的同步空间</p>
+          <div id="loginError" class="error" role="alert" aria-live="polite"></div>
+
+          <div class="form-group">
+            <label for="loginUsername">用户名</label>
+            <input type="text" id="loginUsername" placeholder="输入用户名" autocomplete="username">
+          </div>
+          <div class="form-group">
+            <label for="loginPassword">密码</label>
+            <input type="password" id="loginPassword" placeholder="输入密码" autocomplete="current-password">
+          </div>
+
+          <div class="radio-group" aria-label="登录方式">
+            <label class="radio-option">
+              <input type="radio" name="loginMode" value="temp" checked>
+              <div class="radio-label">
+                <div class="radio-label-title">临时登录</div>
+                <div class="radio-label-desc">适合在别人的设备上使用，关闭浏览器后清除，有效 2 小时</div>
+              </div>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="loginMode" value="permanent">
+              <div class="radio-label">
+                <div class="radio-label-title">长期登录</div>
+                <div class="radio-label-desc">适合你的常用设备，保持 30 天有效期</div>
+              </div>
+            </label>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0">
+            <button id="loginBtn" class="btn btn-primary" type="submit">进入同步空间</button>
+          </div>
+        </div>
+      </div>
+    </form>
+
+    <main id="appView" class="app-view" aria-label="剪贴板同步空间">
+      <header class="app-header">
+        <div class="brand">
+          <div class="brand-badge" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="5" y="4.5" width="14" height="16" rx="3"></rect>
+              <path d="M9 4.5V3.8A1.8 1.8 0 0 1 10.8 2h2.4A1.8 1.8 0 0 1 15 3.8v.7M9 10h6M9 14h6M9 18h3"></path>
+            </svg>
+          </div>
+          <div>
+            <h1>Clip</h1>
+            <p>你的跨设备剪贴板</p>
+          </div>
+        </div>
+        <div class="hero-actions">
+          <span class="sync-status">同步服务正常</span>
+          <button class="btn btn-ghost" id="logoutBtn" type="button">退出登录</button>
+        </div>
+      </header>
+
+      <section class="panel content-area">
+        <div class="content-heading">
+          <div>
+            <div class="section-kicker">Workspace</div>
+            <h2>今天想保存什么？</h2>
+          </div>
+          <p>粘贴文字，或把文件拖进来即可同步</p>
+        </div>
+
+        <div class="tabs" role="tablist" aria-label="保存类型">
+          <button class="tab-btn active" data-tab="temp" type="button" role="tab" aria-selected="true">临时项目</button>
+          <button class="tab-btn" data-tab="permanent" type="button" role="tab" aria-selected="false">长期项目</button>
+        </div>
+
+        <div class="workspace">
+          <section class="section composer" aria-labelledby="composerTitle">
+            <div id="tempTab" class="tab-content active">
+              <div class="section-heading">
+                <div>
+                  <h3 id="composerTitle">写下一段内容</h3>
+                  <p>保存后会立即出现在右侧列表</p>
+                </div>
+            <div class="section-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V21h1.5L18.8 7.7a2.1 2.1 0 0 0-3-3L4 17.9v1.6Z"></path><path d="m14.5 6 3.5 3.5"></path></svg>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="visually-hidden" for="textInput">要同步的文本</label>
+                <textarea id="textInput" placeholder="在这里输入或粘贴文字…"></textarea>
+              </div>
+              <div class="composer-actions">
+                <button class="btn btn-primary" id="textSaveBtn" type="button">保存文本</button>
+              </div>
+
+              <h3 class="upload-heading">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"></path><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"></path></svg>
+                添加文件
+              </h3>
+              <div class="form-group drop-zone" id="dropZone" role="button" tabindex="0" aria-label="拖拽文件到此或点击选择">
+                <input type="file" id="fileInput" multiple class="visually-hidden">
+                <div class="drop-zone-copy"><strong>拖拽到这里</strong><span>或点击选择文件 · 支持多选</span></div>
+              </div>
+              <div class="form-group upload-controls">
+                <button class="btn btn-ghost" id="uploadBtn" type="button">上传文件</button>
+                <div id="uploadError" class="error" role="alert" aria-live="polite"></div>
+              </div>
+              <div id="uploadPanel" class="upload-panel" hidden>
+                <div class="upload-panel-head">
+                  <span id="uploadPanelText" class="upload-panel-text">正在上传…</span>
+                  <button class="upload-cancel" id="uploadCancelBtn" type="button">取消上传</button>
+                </div>
+                <div class="upload-rows" id="uploadRows"></div>
+              </div>
+            </div>
+
+            <div id="permanentTab" class="tab-content">
+              <div class="section-heading">
+                <div>
+                  <h3>长期项目</h3>
+                  <p>长期项目需要从临时列表中保存</p>
+                </div>
+                <div class="section-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"></path></svg>
+                </div>
+              </div>
+              <div class="empty">在临时项目旁点击「长期保存」，内容会一直保留在这里。</div>
+            </div>
+          </section>
+
+          <section class="section saved-section" aria-labelledby="savedTitle">
+            <div class="list-heading">
+              <h3 id="savedTitle">已保存项目</h3>
+              <span class="list-count">自动刷新</span>
+            </div>
+            <div id="tempList" class="list"></div>
+            <div id="permanentList" class="list" hidden></div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="script.js"></script>
+</body>
+</html>
